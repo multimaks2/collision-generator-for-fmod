@@ -20,10 +20,11 @@
 - Опционально: `unpack/` с `*.dff` для fallback.
 
 ### Предварительные требования (Windows)
-- Visual Studio 2022 (C++17 или новее)
+- Visual Studio 2022 (17.x)
   - Workload: Desktop development with C++
   - MSVC toolset: MSVC v143
   - Windows SDK: Windows 10/11 SDK (10.0.19041+)
+  - Рекомендуется C++ CMake tools (опционально)
 
 ### Сборка и запуск (Windows)
 - Сначала запустить `create-projects.bat` в корне проекта (генерация `FMOD_GEOMETRY.sln`).
@@ -64,79 +65,128 @@
 
 # Структура файла geometry.moonstudio
 
-Файл `geometry.moonstudio` содержит 3D геометрию сцены в **полностью текстовом формате** с фиксированной точностью и компактной структурой.
+Файл `geometry.moonstudio` содержит 3D геометрию сцены в бинарном формате (little-endian), соответствующем реализации `Renderer::DumpGeometryToFile`.
 
 ## Заголовок файла
-- **Сигнатура**: `"gemometry_ms"` (12 байт)
-- **Количество моделей**: `uint32_t` в текстовом формате + перенос строки
+- **Сигнатура**: `"gemometry_ms"` — 12 байт
+- **Количество моделей**: `uint32_t`
 
-## Структура модели
-Каждая модель имеет следующую структуру:
+## Тело цикла модели
+Для каждой модели последовательно записываются:
 
-### 1. Метаданные модели
-- **Название модели**: строка переменной длины + перенос строки
-- **Позиция и поворот**: 7 float значений с точностью 6 знаков после запятой, разделенных запятыми + перенос строки:
+### 1. Имя модели
+- `uint32_t nameLength` — длина имени в байтах
+- `char[nameLength]` — название модели (без дополнительного завершающего символа строки)
+
+### 2. Позиция модели
+- **Позиция и поворот**: `7` `float` значений:
   - `x` - координата X
   - `y` - координата Y  
   - `z` - координата Z
-  - `rx` - компонент X кватерниона
-  - `ry` - компонент Y кватерниона
-  - `rz` - компонент Z кватерниона
-  - `rw` - компонент W кватерниона
+  - `rx` - компонент X `кватерниона`
+  - `ry` - компонент Y `кватерниона`
+  - `rz` - компонент Z `кватерниона`
+  - `rw` - компонент W `кватерниона`
 
-### 2. Вершины
-- **Количество вершин**: `uint32_t` в текстовом формате + перенос строки
-- **Координаты вершин**: для каждой вершины 3 float значения с точностью 6 знаков после запятой, разделенных запятыми + перенос строки:
-  - `x` - координата X
-  - `y` - координата Y
-  - `z` - координата Z
-
-### 3. Полигоны
-- **Количество полигонов**: `uint32_t` в текстовом формате + перенос строки
-- **Координаты полигонов**: для каждого полигона 9 float значений с точностью 6 знаков после запятой, разделенных запятыми + перенос строки:
-  - `v1.x`, `v1.y`, `v1.z` - координаты первой вершины
-  - `v2.x`, `v2.y`, `v2.z` - координаты второй вершины
-  - `v3.x`, `v3.y`, `v3.z` - координаты третьей вершины
-
-## Пример структуры
-```
-gemometry_ms
-1
-test
-25.914000,13.337000,8.380000,0.000000,0.000000,0.000000,1.000000
-2
-25.914000,13.337000,8.380000
-40.914000,13.337000,8.416000
-1
-25.914000,13.337000,8.380000,40.914000,13.337000,8.416000,40.914000,28.337000,8.499000
-```
-
-## C++ структуры для чтения
-
-```cpp
-struct ModelData {
-    std::string name;
-    float x, y, z;           // позиция
-    float rx, ry, rz, rw;    // кватернион поворота
-    uint32_t vertexCount;
-    std::vector<FMOD_VECTOR> vertices;
-    uint32_t polygonCount;
-    std::vector<PolygonData> polygons;
-};
-
-struct PolygonData {
-    FMOD_VECTOR v1, v2, v3;  // координаты вершин
-};
-```
+### 3. Треугольники
+- `uint32_t triangleCount` - количество записей треугольников
+- **Треугольники записаны в таком формате** `float` значения:  
+  - **Цикл треугольников**
+    - **Вершина 1** `x`, `y`, `z`
+    - **Вершина 2** `x`, `y`, `z`
+    - **Вершина 3** `x`, `y`, `z`
+  - конец итерации (следующая модель)
 
 ## Примечания
-- **Формат**: Полностью текстовый (не бинарный)
-- **Точность**: Все float значения записываются с точностью 6 знаков после запятой
-- **Разделители**: Запятые между координатами, переносы строк между блоками
-- **Маркеры**: Убраны все маркеры `\`, `{`, `}`, `[`, `]` для экономии места
-- **Координаты**: Вершин и полигонов являются локальными (относительно центра модели)
-- **Позиция модели**: Устанавливается отдельно через FMOD API
-- **Преимущества**: Точность координат без потери данных, компактность, читаемость
+- В формате нет отдельного списка вершин: записываются только треугольники с позициями
+- Точки треугольников берутся из `model.vertices` по индексам из `model.polygons` на момент дампа
+ - Границы блоков однозначны: парсер знает, сколько моделей (`modelCount`) читать, а внутри каждой — сколько треугольников (`triangleCount`). Прочитав ровно `triangleCount * 9` `float`, чтение для модели завершается, и следующий байт — это начало следующей модели.
+
+## Пример C++ парсера
+
+```cpp
+struct GeometryData {
+    std::string name;
+    float x, y, z;
+    float rx, ry, rz, rw;
+    std::vector<FMOD_VECTOR> vertices;   // не используется форматом дампа
+    std::vector<FMOD_VECTOR> triangles;  // по 3 вершины на треугольник
+};
+
+inline uint32_t readUint32LE(FILE* file) {
+    if (!file) return 0;
+    uint32_t value;
+    if (fread(&value, sizeof(uint32_t), 1, file) != 1) return 0;
+    return value;
+}
+
+inline float readFloatLE(FILE* file) {
+    if (!file) return 0.0f;
+    float value;
+    if (fread(&value, sizeof(float), 1, file) != 1) return 0.0f;
+    return value;
+}
+
+inline std::string readString(FILE* file, uint32_t length) {
+    if (!file || length == 0 || length > 1000) return "";
+    std::string result;
+    result.resize(length);
+    if (fread(&result[0], 1, length, file) != length) return "";
+    return result;
+}
+
+std::vector<GeometryData> parseFmodGeometryFile(const char* filePath) {
+    std::vector<GeometryData> geometries;
+    FILE* file = fopen(filePath, "rb");
+    if (!file) return geometries;
+
+    char signature[13];
+    if (fread(signature, 1, 12, file) != 12) { fclose(file); return geometries; }
+    signature[12] = '\0';
+    if (strcmp(signature, "gemometry_ms") != 0) { fclose(file); return geometries; }
+
+    uint32_t modelCount = readUint32LE(file);
+    if (modelCount == 0 || modelCount > 10000) { fclose(file); return geometries; }
+
+    for (uint32_t i = 0; i < modelCount; ++i) {
+        GeometryData g;
+
+        uint32_t nameLength = readUint32LE(file);
+        if (nameLength == 0 || nameLength > 1000) continue;
+        g.name = readString(file, nameLength);
+        if (g.name.empty()) continue;
+
+        g.x = readFloatLE(file);
+        g.y = readFloatLE(file);
+        g.z = readFloatLE(file);
+        g.rx = readFloatLE(file);
+        g.ry = readFloatLE(file);
+        g.rz = readFloatLE(file);
+        g.rw = readFloatLE(file);
+
+        uint32_t triangleCount = readUint32LE(file);
+        if (triangleCount == 0 || triangleCount > 100000) continue;
+
+        g.triangles.reserve(triangleCount * 3);
+        for (uint32_t t = 0; t < triangleCount; ++t) {
+            if (feof(file)) break;
+            FMOD_VECTOR v1, v2, v3;
+            v1.x = readFloatLE(file); v1.y = readFloatLE(file); v1.z = readFloatLE(file);
+            v2.x = readFloatLE(file); v2.y = readFloatLE(file); v2.z = readFloatLE(file);
+            v3.x = readFloatLE(file); v3.y = readFloatLE(file); v3.z = readFloatLE(file);
+            if (feof(file)) break;
+            g.triangles.push_back(v1);
+            g.triangles.push_back(v2);
+            g.triangles.push_back(v3);
+        }
+
+        geometries.push_back(std::move(g));
+    }
+
+    fclose(file);
+    return geometries;
+}
+```
 
 </details>
 
