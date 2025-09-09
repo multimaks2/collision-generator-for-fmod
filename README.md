@@ -19,7 +19,14 @@
 - `data/gta.dat` и соответствующие `*.img` в `models/` (поддерживается автопоиск).
 - Опционально: `unpack/` с `*.dff` для fallback.
 
+### Предварительные требования (Windows)
+- Visual Studio 2022 (17.x)
+  - Workload: Desktop development with C++
+  - MSVC toolset: MSVC v143
+  - Windows SDK: Windows 10/11 SDK (10.0.19041+)
+
 ### Сборка и запуск (Windows)
+- Сначала запустить `create-projects.bat` в корне проекта (генерация `FMOD_GEOMETRY.sln`).
 - Открыть `FMOD_GEOMETRY.sln` (Visual Studio, x64).
 - Собрать `Release`.
 - Запустить `Bin/x86_64/Release/Core.exe`.
