@@ -1,0 +1,29 @@
+name: Build Windows
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate VS solution with premake5
+        run: .\utils\premake5.exe vs2022
+
+      - name: Build Solution (Release x64)
+        run: msbuild .\Build\FMOD_GEOMETRY.sln /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Core-Release-x64
+          path: |
+            Bin/x86_64/Release/Core.exe
+            Bin/x86_64/Release/*.dll
