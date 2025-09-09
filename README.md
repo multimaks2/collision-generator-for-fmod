@@ -20,7 +20,7 @@
 - Опционально: `unpack/` с `*.dff` для fallback.
 
 ### Предварительные требования (Windows)
-- Visual Studio 2022 (17.x)
+- Visual Studio 2022 (C++17 или новее)
   - Workload: Desktop development with C++
   - MSVC toolset: MSVC v143
   - Windows SDK: Windows 10/11 SDK (10.0.19041+)
